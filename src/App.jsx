@@ -11,6 +11,27 @@ import { useHeyGenStreaming } from './services/heygen';
 import auth, { signInWithGoogle, sendOTP, verifyOTP } from "./lib/firebase"
 import { onAuthStateChanged, signInWithEmailAndPassword } from 'firebase/auth';
 import { ThemeProvider } from './ThemeProvider';
+import { ThemeContext } from './contexts/ThemeContext';
+
+//import { db } from './lib/firebase';
+//import { collection, addDoc } from 'firebase/firestore';
+// import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { saveFile, saveCandidateData, getFile, getCandidateData } from './utils/fileHandler';
+import { useTheme } from './contexts/ThemeContext';
+import  LogoutButton  from '@/components/ui/LogoutButton';
+import { ThemeSwitcher } from './components/ui/ThemeSwitcher';
+
+const Header = () => {
+  return (
+    <div className="flex items-center justify-between p-4 bg-white/80 backdrop-blur-sm">
+      <h1 className="text-2xl font-bold">AI Interview Platform</h1>
+      <div className="flex items-center gap-4">
+        <ThemeSwitcher />
+        <LogoutButton />
+      </div>
+    </div>
+  );
+};
 
 const LoginPage = () => {
   const navigate = useNavigate();
@@ -166,6 +187,7 @@ const LoginPage = () => {
   );
 };
 
+
 const UploadPage = () => {
   const navigate = useNavigate();
   const [candidateName, setCandidateName] = useState('');
@@ -175,49 +197,106 @@ const UploadPage = () => {
   const [jobRole, setJobRole] = useState('');
   const [jobDescription, setJobDescription] = useState(null);
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  //const db = getFirestore();
+  const handleFileUpload = async (file, type) => {
+    if (!file) return null;
+    
+    try {
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      const allowedTypes = [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      ];
+
+      if (file.size > maxSize) {
+        throw new Error('File size exceeds 5MB limit');
+      }
+      if (!allowedTypes.includes(file.type)) {
+        throw new Error('Invalid file type. Please upload PDF or Word documents only');
+      }
+
+      const filePath = await saveFile(file, type);
+      return filePath;
+    } catch (err) {
+      setError(err.message);
+      console.error('File upload error:', err);
+      return null;
+    }
+  };
+
+  const handleResumeUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      handleFileUpload(file, 'resumes')
+        .then(() => setResume(file))
+        .catch(err => setError(err.message));
+    }
+  };
+
+  const handleJobDescriptionUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      handleFileUpload(file, 'job-descriptions')
+        .then(() => setJobDescription(file))
+        .catch(err => setError(err.message));
+    }
+  };
 
   const handleSubmit = async () => {
-    // Validation
     if (!candidateName || !candidateEmail || !candidateContact || !resume || !jobRole || !jobDescription) {
       setError('Please fill in all fields and upload required documents');
       return;
     }
 
+    setIsSubmitting(true);
     try {
-      // Upload document details to Firestore
-      const docRef = await addDoc(collection(db, 'interview_candidates'), {
+      const resumePath = await saveFile(resume, 'resumes');
+      const jobDescriptionPath = await saveFile(jobDescription, 'job-descriptions');
+
+      const candidateData = await saveCandidateData({
         candidateName,
         candidateEmail,
         candidateContact,
         jobRole,
-        uploadedAt: new Date()
+        resumePath,
+        jobDescriptionPath
       });
 
-      // File upload logic would go here (not implemented in this example)
-      navigate('/interview');
+      navigate('/interview', { 
+        state: { 
+          candidateId: candidateData.id,
+          jobRole,
+          resumePath,
+          jobDescriptionPath
+        }
+      });
     } catch (err) {
-      setError('Failed to submit interview details');
+      setError('Failed to save interview details');
       console.error(err);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <div 
-      className="min-h-screen p-8 relative overflow-hidden"
-      style={{
-        backgroundImage: `url(${backgroundImage})`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center'
-      }}
-    >
+    <div className="min-h-screen p-8 relative overflow-hidden"
+         style={{
+           backgroundImage: `url(${backgroundImage})`,
+           backgroundSize: 'cover',
+           backgroundPosition: 'center'
+         }}>
       <div className="absolute inset-0 bg-white/80 backdrop-blur-sm" />
 
       <div className="max-w-4xl mx-auto space-y-8 relative animate-fadeIn">
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-gray-800 mb-4 animate-slideUp">Interview Preparation</h1>
-          <p className="text-gray-600 animate-slideUp delay-100">Complete your profile and upload documents</p>
+          <h1 className="text-4xl font-bold text-gray-800 mb-4 animate-slideUp">
+            Interview Preparation
+          </h1>
+          <p className="text-gray-600 animate-slideUp delay-100">
+            Complete your profile and upload documents
+          </p>
         </div>
         
         {error && (
@@ -282,9 +361,7 @@ const UploadPage = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700">Resume</label>
-                <div 
-                  className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center transition-all duration-300 hover:border-blue-500 hover:bg-blue-50/50"
-                >
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center transition-all duration-300 hover:border-blue-500 hover:bg-blue-50/50">
                   {resume ? (
                     <div className="space-y-2 animate-fadeIn">
                       <FileText className="h-12 w-12 mx-auto text-blue-500 animate-bounce-subtle" />
@@ -299,7 +376,7 @@ const UploadPage = () => {
                   <Input
                     type="file"
                     className="mt-4"
-                    onChange={(e) => setResume(e.target.files[0])}
+                    onChange={handleResumeUpload}
                     accept=".pdf,.doc,.docx"
                   />
                 </div>
@@ -307,9 +384,7 @@ const UploadPage = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700">Job Description</label>
-                <div 
-                  className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center transition-all duration-300 hover:border-blue-500 hover:bg-blue-50/50"
-                >
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center transition-all duration-300 hover:border-blue-500 hover:bg-blue-50/50">
                   {jobDescription ? (
                     <div className="space-y-2 animate-fadeIn">
                       <FileText className="h-12 w-12 mx-auto text-blue-500 animate-bounce-subtle" />
@@ -324,7 +399,7 @@ const UploadPage = () => {
                   <Input
                     type="file"
                     className="mt-4"
-                    onChange={(e) => setJobDescription(e.target.files[0])}
+                    onChange={handleJobDescriptionUpload}
                     accept=".pdf,.doc,.docx"
                   />
                 </div>
@@ -335,31 +410,27 @@ const UploadPage = () => {
 
         <Button
           onClick={handleSubmit}
-          disabled={!candidateName || !candidateEmail || !candidateContact || !resume || !jobRole || !jobDescription}
+          disabled={!candidateName || !candidateEmail || !candidateContact || !resume || !jobRole || !jobDescription || isSubmitting}
           className="w-full max-w-md mx-auto mt-8 bg-blue-600 hover:bg-blue-700 text-white py-6 rounded-lg shadow-md transition-all hover:scale-[1.02] active:scale-[0.98] animate-slideUp delay-400"
         >
-          <Send className="h-5 w-5 mr-2" />
-          <span>Start Interview Preparation</span>
+          {isSubmitting ? (
+            <div className="flex items-center justify-center">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2" />
+              <span>Processing...</span>
+            </div>
+          ) : (
+            <>
+              <Send className="h-5 w-5 mr-2" />
+              <span>Start Interview Preparation</span>
+            </>
+          )}
         </Button>
       </div>
     </div>
   );
 };
-// Theme Switcher Component
-const ThemeSwitcher = () => {
-  const { theme, setTheme } = React.useContext(ThemeContext);
 
-  return (
-    <Button
-      variant="ghost"
-      size="icon"
-      onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-      className="absolute top-4 right-4 text-gray-400 hover:text-gray-300"
-    >
-      {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-    </Button>
-  );
-};
+
 
 const InterviewPage = () => {
   const navigate = useNavigate();
@@ -542,18 +613,14 @@ const InterviewPage = () => {
   );
 
   const ThemeSwitcher = () => {
-    const { theme, setTheme } = React.useContext(ThemeContext);
+    const { theme, toggleTheme } = useTheme();
+    
     return (
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-        className="text-gray-400 hover:text-gray-300"
-      >
+      <Button variant="ghost" size="icon" onClick={toggleTheme}>
         {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
       </Button>
     );
-  };
+  }; 
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 transition-colors duration-200">

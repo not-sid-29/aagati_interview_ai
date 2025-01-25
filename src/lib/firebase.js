@@ -7,6 +7,7 @@ import {
   isSignInWithEmailLink,
   signInWithEmailLink
 } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -20,6 +21,8 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+const db = getFirestore(app);
+
 
 export const signInWithGoogle = async () => {
   const provider = new GoogleAuthProvider();
@@ -40,7 +43,6 @@ export const sendOTP = async (email) => {
 
   try {
     await sendSignInLinkToEmail(auth, email, actionCodeSettings);
-    // Store email in localStorage to complete sign-in later
     window.localStorage.setItem('emailForSignIn', email);
     return true;
   } catch (error) {
@@ -52,7 +54,6 @@ export const sendOTP = async (email) => {
 export const verifyOTP = async () => {
   if (isSignInWithEmailLink(auth, window.location.href)) {
     const email = window.localStorage.getItem('emailForSignIn');
-    
     if (!email) {
       throw new Error('Please provide your email for verification');
     }
@@ -69,4 +70,5 @@ export const verifyOTP = async () => {
   throw new Error('Invalid verification link');
 };
 
+export { db };
 export default auth;
