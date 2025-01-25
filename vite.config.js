@@ -17,7 +17,7 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api\/heygen/, ''),
         secure: false,
         headers: {
-          'X-Api-Key': 'Nzc4MjNhMTFmYzNkNGZiNTlhMDQxOTcyYTJkNjMyZDQtMTczNTIxNzY0Ng==',
+          'X-Api-Key': '<HEYGEN_API_KEY>',
           'Content-Type': 'application/json'
         },
         configure: (proxy, _options) => {
